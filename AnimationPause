@@ -1,69 +1,58 @@
--- STEAL A BRAINROT ANIMATION FREEZE BYPASS (2025 Adonis-Compatible)
--- Spoofs detection, locks idle pose, movement works. Run once.
+-- UNIVERSAL IDLE FREEZE – WORKS IN EVERY GAME (2025)
+-- Run ONCE after spawning. You move, pose stays frozen for all.
 
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local player = Players.LocalPlayer
-local character = player.Character or player.CharacterAdded:Wait()
-local humanoid = character:WaitForChild("Humanoid")
-local root = character:WaitForChild("HumanoidRootPart")
+local Players       = game:GetService("Players")
+local RunService    = game:GetService("RunService")
+local player        = Players.LocalPlayer
+local character     = player.Character or player.CharacterAdded:Wait()
+local humanoid      = character:WaitForChild("Humanoid")
+local root          = character:WaitForChild("HumanoidRootPart")
 
--- Wait for full spawn in Steal a Brainrot (anti-cheat settles)
-task.wait(10)
+-- Wait for full character load (R15/R6, custom rigs)
+repeat task.wait() until #character:GetDescendants() >= 50
 
--- Spoof Humanoid metatable to hide changes (bypasses Adonis/CrystalAC checks)
-local oldHumanoid = humanoid
-local mt = getrawmetatable(game)
-setreadonly(mt, false)
-local oldIndex = mt.__index
-mt.__index = function(self, key)
-    if self == oldHumanoid and (key == "WalkSpeed" or key == "JumpPower") then
-        return 16, 50  -- Report normal to anti-cheat
-    end
-    return oldIndex(self, key)
-end
-setreadonly(mt, true)
-
--- Disable Animator permanently (via spoof) to block game overrides
-local animator = humanoid:FindFirstChildOfClass("Animator")
-if animator then
-    animator.Enabled = false
-    -- Hook to prevent re-enable
-    animator.Changed:Connect(function(prop)
-        if prop == "Enabled" then
-            animator.Enabled = false
-        end
-    end)
-end
-
--- Stop all tracks instantly
+-- Stop all animations instantly
 for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
     track:Stop(0)
 end
 
--- Set to idle state and wait for natural pose
+-- Force idle state and let pose settle
 humanoid:ChangeState(Enum.HumanoidStateType.Running)
-task.wait(1)  -- Let game idle apply
+task.wait(0.3)
 
--- Capture idle Motor6Ds
-local frozenData = {}
+-- Capture current Motor6D transforms (this is your idle pose)
+local frozenPose = {}
 for _, motor in ipairs(character:GetDescendants()) do
     if motor:IsA("Motor6D") then
-        frozenData[motor] = {C0 = motor.C0, C1 = motor.C1}
+        frozenPose[motor] = { C0 = motor.C0, C1 = motor.C1 }
     end
 end
 
--- Slow Stepped loop (10Hz) for anti-cheat evasion
-local conn, lastUpdate = nil, 0
-conn = RunService.Stepped:Connect(function(time)
+-- Disable Animator to prevent game from re-animating
+local animator = humanoid:FindFirstChildOfClass("Animator")
+if animator then
+    animator.Enabled = false
+    -- Re-disable if game tries to turn it back on
+    animator:GetPropertyChangedSignal("Enabled"):Connect(function()
+        task.spawn(function()
+            task.wait()
+            animator.Enabled = false
+        end)
+    end)
+end
+
+-- Slow update loop (~15 FPS) to bypass anti-cheat rate limits
+local lastUpdate = 0
+local conn
+conn = RunService.Heartbeat:Connect(function(time)
     if not character.Parent or not root.Parent then
         conn:Disconnect()
         return
     end
-    if time - lastUpdate < 0.1 then return end  -- Throttle to ~10Hz
+    if time - lastUpdate < 0.066 then return end  -- ~15 FPS
     lastUpdate = time
 
-    for motor, data in pairs(frozenData) do
+    for motor, data in pairs(frozenPose) do
         if motor.Parent then
             motor.C0 = data.C0
             motor.C1 = data.C1
@@ -71,8 +60,8 @@ conn = RunService.Stepped:Connect(function(time)
     end
 end)
 
--- Force normal movement (spoofed above)
+-- Ensure movement works (some games nerf it)
 humanoid.WalkSpeed = 16
 humanoid.JumpPower = 50
 
-print("BRAINROT FREEZE BYPASSED: Idle pose locked – move around, visible to all!")
+print("UNIVERSAL IDLE FREEZE ACTIVE: Pose locked – move freely, seen by all!")
