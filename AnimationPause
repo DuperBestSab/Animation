@@ -1,0 +1,68 @@
+-- Idle-Pose Freeze (server-visible, movement works)
+-- Run once with any executor.
+
+local Players     = game:GetService("Players")
+local RunService  = game:GetService("RunService")
+local player      = Players.LocalPlayer
+local character   = player.Character or player.CharacterAdded:Wait()
+local humanoid    = character:WaitForChild("Humanoid")
+local root        = character:WaitForChild("HumanoidRootPart")
+
+----------------------------------------------------------------
+-- 1. Wait for the default idle animation to fully load
+----------------------------------------------------------------
+local idleTrack
+repeat
+    for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+        if track.Animation.AnimationId:find("rbxassetid://") then
+            idleTrack = track
+            break
+        end
+    end
+    task.wait()
+until idleTrack
+
+----------------------------------------------------------------
+-- 2. Stop every animation *except* the idle one
+----------------------------------------------------------------
+for _, track in ipairs(humanoid:GetPlayingAnimationTracks()) do
+    if track ~= idleTrack then
+        track:Stop()
+    end
+end
+
+----------------------------------------------------------------
+-- 3. Save the Motor6D transforms **while the idle pose is active**
+----------------------------------------------------------------
+local motorData = {}
+for _, motor in ipairs(character:GetDescendants()) do
+    if motor:IsA("Motor6D") then
+        motorData[motor] = { C0 = motor.C0, C1 = motor.C1 }
+    end
+end
+
+----------------------------------------------------------------
+-- 4. Force the saved pose every RenderStepped (replicates to server)
+----------------------------------------------------------------
+local conn
+conn = RunService.RenderStepped:Connect(function()
+    if not character.Parent or not root.Parent then
+        conn:Disconnect()
+        return
+    end
+
+    for motor, data in pairs(motorData) do
+        if motor.Parent then
+            motor.C0 = data.C0
+            motor.C1 = data.C1
+        end
+    end
+end)
+
+----------------------------------------------------------------
+-- 5. (Optional) Make sure movement works
+----------------------------------------------------------------
+humanoid.WalkSpeed = 16
+humanoid.JumpPower = 50
+
+print("Idle-pose freeze active – you can move, pose stays locked for everyone.")
