@@ -1,28 +1,29 @@
--- Animation Freeze + Toggle UI (Client-Side)
--- Works with any executor
+-- Draggable Animation Freeze UI (Client-Side)
+-- Drag the bar to move the whole panel
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
 local character = player.Character or player.CharacterAdded:Wait()
 local humanoid = character:WaitForChild("Humanoid")
 local animateScript = character:WaitForChild("Animate", 5)
+if not animateScript then warn("Animate script not found!") return end
 
-if not animateScript then
-	warn("Animate script not found!")
-	return
-end
-
--- ==== UI ====
+-------------------------------------------------
+-- UI
+-------------------------------------------------
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "AnimFreezeUI"
 screenGui.ResetOnSpawn = false
-screenGui.Parent = player:WaitForChild("PlayerGui")
+screenGui.Parent = playerGui
 
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 180, 0, 50)
+frame.Size = UDim2.new(0, 190, 0, 50)
 frame.Position = UDim2.new(0, 10, 0, 10)
 frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 frame.BorderSizePixel = 2
@@ -33,17 +34,23 @@ local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 8)
 corner.Parent = frame
 
-local textLabel = Instance.new("TextLabel")
-textLabel.Size = UDim2.new(1, -70, 1, 0)
-textLabel.Position = UDim2.new(0, 5, 0, 0)
-textLabel.BackgroundTransparency = 1
-textLabel.Text = "Freeze Animation"
-textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-textLabel.Font = Enum.Font.GothamBold
-textLabel.TextSize = 14
-textLabel.TextXAlignment = Enum.TextXAlignment.Left
-textLabel.Parent = frame
+-- Drag bar (top part)
+local dragBar = Instance.new("Frame")
+dragBar.Size = UDim2.new(1, 0, 0, 20)
+dragBar.BackgroundTransparency = 1
+dragBar.Parent = frame
 
+local dragLabel = Instance.new("TextLabel")
+dragLabel.Size = UDim2.new(1, -70, 1, 0)
+dragLabel.BackgroundTransparency = 1
+dragLabel.Text = "Freeze Animation"
+dragLabel.TextColor3 = Color3.new(1,1,1)
+dragLabel.Font = Enum.Font.GothamBold
+dragLabel.TextSize = 14
+dragLabel.TextXAlignment = Enum.TextXAlignment.Left
+dragLabel.Parent = dragBar
+
+-- Toggle button
 local toggleBtn = Instance.new("TextButton")
 toggleBtn.Size = UDim2.new(0, 50, 0, 30)
 toggleBtn.Position = UDim2.new(1, -55, 0, 10)
@@ -58,16 +65,56 @@ local btnCorner = Instance.new("UICorner")
 btnCorner.CornerRadius = UDim.new(0, 6)
 btnCorner.Parent = toggleBtn
 
--- ==== FREEZE LOGIC ====
+-------------------------------------------------
+-- Dragging logic
+-------------------------------------------------
+local dragging = false
+local dragInput, dragStart, startPos
+
+local function updateInput(input)
+	local delta = input.Position - dragStart
+	frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X,
+	                           startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+
+dragBar.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = frame.Position
+
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+dragBar.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement then
+		dragInput = input
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and (input == dragInput) then
+		updateInput(input)
+	end
+end)
+
+-------------------------------------------------
+-- Freeze logic
+-------------------------------------------------
 local frozenTransforms = {}
 local motors = {}
 local connection
 
 local function collectMotors()
 	table.clear(motors)
-	for _, m in ipairs(character:GetDescendants()) do
-		if m:IsA("Motor6D") and m.Part0 and m.Part1 then
-			table.insert(motors, m)
+	for _, v in character:GetDescendants() do
+		if v:IsA("Motor6D") and v.Part0 and v.Part1 then
+			table.insert(motors, v)
 		end
 	end
 end
@@ -75,37 +122,29 @@ end
 local function freezePose()
 	collectMotors()
 	table.clear(frozenTransforms)
-	for _, motor in ipairs(motors) do
-		frozenTransforms[motor] = motor.Transform
+	for _, m in motors do
+		frozenTransforms[m] = m.Transform
 	end
-
 	animateScript.Disabled = true
 
 	if connection then connection:Disconnect() end
 	connection = RunService.RenderStepped:Connect(function()
 		if not character.Parent then return end
-		for motor, tr in pairs(frozenTransforms) do
-			if motor.Parent then
-				motor.Transform = tr
-			end
+		for m, tr in frozenTransforms do
+			if m.Parent then m.Transform = tr end
 		end
 	end)
 end
 
 local function unfreezePose()
 	animateScript.Disabled = false
-	if connection then
-		connection:Disconnect()
-		connection = nil
-	end
+	if connection then connection:Disconnect() connection = nil end
 end
 
--- ==== TOGGLE ====
 local isFrozen = false
-
-local function setState(freeze)
-	isFrozen = freeze
-	if freeze then
+local function setState(on)
+	isFrozen = on
+	if on then
 		freezePose()
 		toggleBtn.Text = "ON"
 		toggleBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
@@ -120,7 +159,6 @@ toggleBtn.MouseButton1Click:Connect(function()
 	setState(not isFrozen)
 end)
 
--- Initial state
 setState(false)
 
-print("Animation Freeze UI loaded! Click the button to toggle.")
+print("Draggable Animation Freeze UI ready! Drag the top bar to move.")
